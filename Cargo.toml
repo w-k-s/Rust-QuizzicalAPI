@@ -1,0 +1,11 @@
+[package]
+name = "quizzical"
+version = "0.1.0"
+authors = ["Waqqas Sheikh <waqqas.abdulkareem@gmail.com>"]
+
+[dependencies]
+hyper = "0.12"
+futures = "0.1" 
+bson = "0.12.2"
+mongodb = "0.3.10"
+mopa = "0.2.2"
