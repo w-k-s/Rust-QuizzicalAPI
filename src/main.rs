@@ -13,6 +13,8 @@ extern crate serde_derive;
 extern crate serde;
 extern crate serde_json;
 
+extern crate url;
+
 use std::sync::Arc;
 use std::collections::HashMap;
 
@@ -27,6 +29,12 @@ use mongodb::coll::Collection;
 use mongodb::coll::options::FindOptions;
 
 use futures::future;
+
+use url::form_urlencoded;
+
+#[macro_use]
+extern crate log;
+extern crate pretty_env_logger;
 
 type BoxedResponse = Box<Future<Item=Response<Body>,Error=hyper::Error> + Send>;
 
@@ -159,7 +167,16 @@ impl QuestionsController{
     }
 
     fn questions(&self, request: &Request<Body>, response: &mut Response<Body>)->(){
-        *response.body_mut() = Body::from(serde_json::to_string(&self.service.questions("Science",1,10).unwrap()).unwrap());        
+        let query = request.uri().query().unwrap().as_bytes();
+        let params = form_urlencoded::parse(query).into_owned().collect::<HashMap<String, String>>();
+        let category = params.get("category").unwrap();
+        let page = params.get("page").map(|p| p.parse::<u64>().unwrap()).unwrap_or(1);
+        let size = params.get("size").map(|s| s.parse::<u64>().unwrap()).unwrap_or(10);
+
+        let questions = self.service.questions(category,page,size).unwrap();
+        let json = serde_json::to_string(&questions).unwrap();
+
+        *response.body_mut() = Body::from(json);        
     }
 }
 
@@ -187,6 +204,8 @@ impl ControllerRegistry{
 }
 
 fn main() {
+    pretty_env_logger::init();
+
     let client = Client::connect("localhost", 27017)
         .expect("Failed to initialize standalone client.");
 
@@ -207,7 +226,7 @@ fn main() {
         })
     };
 
-	let addr = ([127, 0, 0, 1], 3000).into();
+	let addr = ([127, 0, 0, 1], 3001).into();
 	let server = Server::bind(&addr)
 	    .serve(new_service)
 	    .map_err(|e| eprintln!("server error: {}", e));
