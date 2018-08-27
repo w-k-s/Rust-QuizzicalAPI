@@ -4,8 +4,9 @@
 - [x] return questions as string
 - [x] returns responses as json
 - [x] parse page size and offset from request
-- [ ] return paginated response
-- [ ] handle errors
-- [ ] send status code, content type
+- [x] return paginated response
+- [x] send content type
+- [ ] handle errors + status code
 - [ ] cache responses
+- [ ] organise into modules
 

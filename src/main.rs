@@ -20,6 +20,7 @@ use std::collections::HashMap;
 
 use hyper::{Body, Request, Response, Server};
 use hyper::rt::Future;
+use hyper::header::{ HeaderValue,CONTENT_TYPE};
 use hyper::service::service_fn;
 use hyper::{Method, StatusCode};
 
@@ -37,6 +38,7 @@ extern crate log;
 extern crate pretty_env_logger;
 
 type BoxedResponse = Box<Future<Item=Response<Body>,Error=hyper::Error> + Send>;
+type TotalRecordsCount = u64;
 
 fn app(req: Request<Body>, registry: Arc<ControllerRegistry>) -> BoxedResponse {
     let mut response = Response::new(Body::empty());
@@ -105,26 +107,38 @@ impl QuestionsRepository{
                     .expect("Unexpected non-string category")
                     .to_owned() 
                 ).collect()
-            ).map_err(|err| format!("{:?}",err))
+            ).map_err(|err| format!("{}",err))
     }
 
-    fn questions(&self,category: &str, page: u64, size: u64)->Result<Vec<Question>,String>{
+    fn questions(&self,category: &str, page: u64, size: u64)->Result<(Vec<Question>,TotalRecordsCount),String>{
+        
+        let filter = doc!{"category":category.clone()};
+        
+        let count = self
+            .coll("questions")
+            .count(Some(filter.clone()),None)
+            .unwrap_or(0) as u64;
+
+        if count == 0{
+            return Ok((vec![],0));
+        }
+
         let mut find_options = FindOptions::new();
         find_options.limit = Some(size as i64);
         find_options.skip = Some(page.saturating_sub(1).checked_mul(size).unwrap_or(0) as i64);
-
-        let filter = doc!{"category":category.clone()};
 
         return self
             .coll("questions")
             .find(Some(filter),Some(find_options))
             .map(|c| {
-                c.map(|d|{
+                let questions = c.map(|d|{
                         bson::from_bson(bson::Bson::Document(d.unwrap()))
                         .unwrap()
-                }).collect()
+                }).collect();
+
+                (questions,count)
             })
-            .map_err(|err| format!("{:?}",err))
+            .map_err(|err| format!("{}",err))
     }
 }
 
@@ -143,7 +157,7 @@ impl QuestionsService{
         return self.repo.categories();
     }
 
-    fn questions(&self, category: &str, page: u64, size: u64)->Result<Vec<Question>,String>{
+    fn questions(&self, category: &str, page: u64, size: u64)->Result<(Vec<Question>,TotalRecordsCount),String>{
         return self.repo.questions(category,page,size);
     }
 }
@@ -153,6 +167,36 @@ mopafy!(Controller);
 
 struct QuestionsController{
     service : Box<QuestionsService>
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct PaginatedResponse<T>{
+    data : Vec<T>,
+    page: u64,
+    size: u64,
+    page_count: u64,
+    last: bool
+}
+
+impl <T> PaginatedResponse<T>{
+
+    fn new(data: Vec<T>, page: u64, total_records: u64, limit: u64)->PaginatedResponse<T>{
+        let size = data.len() as u64;
+        let page_count = (total_records/limit)+1u64;
+        let last = page >= page_count;
+        return PaginatedResponse{
+            data: data,
+            page: page,
+            size: size,
+            page_count: page_count,
+            last: last
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Error{
+    error : String
 }
 
 impl QuestionsController{
@@ -167,15 +211,44 @@ impl QuestionsController{
     }
 
     fn questions(&self, request: &Request<Body>, response: &mut Response<Body>)->(){
-        let query = request.uri().query().unwrap().as_bytes();
-        let params = form_urlencoded::parse(query).into_owned().collect::<HashMap<String, String>>();
-        let category = params.get("category").unwrap();
-        let page = params.get("page").map(|p| p.parse::<u64>().unwrap()).unwrap_or(1);
-        let size = params.get("size").map(|s| s.parse::<u64>().unwrap()).unwrap_or(10);
+        
+        response.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        
+        let params_result = request
+        .uri()
+        .query()
+        .map(|q| q.as_bytes())
+        .map(|query| {
+            form_urlencoded::parse(query).into_owned().collect::<HashMap<String, String>>()
+        })
+        .ok_or(Error{error: "Required Parameter 'category' not present in query.".to_owned()});
 
-        let questions = self.service.questions(category,page,size).unwrap();
-        let json = serde_json::to_string(&questions).unwrap();
 
+        let params = match params_result {
+            Ok(params) => params,
+            Err(err) => {
+                let json = serde_json::to_string(&err).unwrap();
+                *response.body_mut() = Body::from(json);  
+                return;
+            }
+        };
+
+        let category = match params.get("category"){
+            Some(category) => category,
+            None => {
+                let json = serde_json::to_string(&Error{error: "Required Parameter 'category' not present in query.".to_owned()}).unwrap();
+                *response.body_mut() = Body::from(json);  
+                return;
+            }
+        };
+
+        let page = params.get("page").and_then(|p| p.parse::<u64>().ok().or(None)).unwrap_or(1);
+        let size = params.get("size").and_then(|s| s.parse::<u64>().ok().or(None)).unwrap_or(10);
+
+        let (questions,count) = self.service.questions(category,page,size).unwrap();
+        let paginated_body = PaginatedResponse::new(questions,page,count,size);
+
+        let json = serde_json::to_string(&paginated_body).unwrap();
         *response.body_mut() = Body::from(json);        
     }
 }
