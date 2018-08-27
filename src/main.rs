@@ -159,8 +159,7 @@ impl QuestionsController{
     }
 
     fn questions(&self, request: &Request<Body>, response: &mut Response<Body>)->(){
-        //*response.body_mut() = Body::from(self.service.questions("Science",1,10).unwrap().join("\n").to_string()));        
-        *response.body_mut() = Body::from(format!("{:?}",self.service.questions("Science",1,10).unwrap()));        
+        *response.body_mut() = Body::from(serde_json::to_string(&self.service.questions("Science",1,10).unwrap()).unwrap());        
     }
 }
 
