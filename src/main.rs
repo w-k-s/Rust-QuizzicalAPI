@@ -235,7 +235,7 @@ impl QuestionsController{
 
         let category = match params.get("category"){
             Some(category) => category,
-            None => {
+            _ => {
                 let json = serde_json::to_string(&Error{error: "Required Parameter 'category' not present in query.".to_owned()}).unwrap();
                 *response.body_mut() = Body::from(json);  
                 return;
@@ -245,7 +245,15 @@ impl QuestionsController{
         let page = params.get("page").and_then(|p| p.parse::<u64>().ok().or(None)).unwrap_or(1);
         let size = params.get("size").and_then(|s| s.parse::<u64>().ok().or(None)).unwrap_or(10);
 
-        let (questions,count) = self.service.questions(category,page,size).unwrap();
+        let (questions,count) = match self.service.questions(category,page,size){
+            Ok(output) => output,
+            Err(err) => {
+                let json = serde_json::to_string(&Error{error: format!("{}",err)}).unwrap();
+                *response.body_mut() = Body::from(json);  
+                return;
+            } 
+        };
+
         let paginated_body = PaginatedResponse::new(questions,page,count,size);
 
         let json = serde_json::to_string(&paginated_body).unwrap();
