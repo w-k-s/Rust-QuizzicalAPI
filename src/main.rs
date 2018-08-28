@@ -64,6 +64,16 @@ fn app(req: Request<Body>, registry: Arc<ControllerRegistry>) -> BoxedResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+struct Category{
+    title: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Categories{
+    categories: Vec<Category>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 struct Choice{
     title: String,
     correct: bool
@@ -94,7 +104,7 @@ impl QuestionsRepository{
         self.client.db("quizzical").collection(name)
     }
 
-    fn categories(&self) -> Result<Vec<String>,String>{
+    fn categories(&self) -> Result<Categories,String>{
         return self
             .coll("questions")
             .distinct("category",None,None)
@@ -106,8 +116,12 @@ impl QuestionsRepository{
                     .as_str()
                     .expect("Unexpected non-string category")
                     .to_owned() 
-                ).collect()
-            ).map_err(|err| format!("{}",err))
+                )
+                .map(|title| Category{title:title})
+                .collect()
+            )
+            .map(|categories| Categories{categories: categories})
+            .map_err(|err| format!("{}",err))
     }
 
     fn questions(&self,category: &str, page: u64, size: u64)->Result<(Vec<Question>,TotalRecordsCount),String>{
@@ -153,7 +167,7 @@ impl QuestionsService{
         }
     }
 
-    fn categories(&self) -> Result<Vec<String>, String>{
+    fn categories(&self) -> Result<Categories, String>{
         return self.repo.categories();
     }
 

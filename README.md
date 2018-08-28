@@ -7,7 +7,6 @@
 - [x] return paginated response
 - [x] send content type
 - [x] handle errors + status code
-- [ ] cache responses
 - [ ] organise into modules
 - [ ] env variables
 - [ ] docker
