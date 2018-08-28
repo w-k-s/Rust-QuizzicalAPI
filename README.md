@@ -7,7 +7,7 @@
 - [x] return paginated response
 - [x] send content type
 - [x] handle errors + status code
-- [ ] organise into modules
+- [x] organise into modules
 - [ ] env variables
 - [ ] docker
 - [ ] AWS
