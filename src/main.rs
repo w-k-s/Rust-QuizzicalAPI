@@ -22,7 +22,7 @@ use hyper::{Body, Request, Response, Server};
 use hyper::rt::Future;
 use hyper::header::{ HeaderValue,CONTENT_TYPE};
 use hyper::service::service_fn;
-use hyper::{Method, StatusCode};
+use hyper::{Method,StatusCode};
 
 use mongodb::{Client, ThreadedClient};
 use mongodb::db::{ThreadedDatabase};
@@ -31,10 +31,10 @@ use mongodb::coll::options::FindOptions;
 
 use futures::future;
 
+use serde::{Serialize};
+
 use url::form_urlencoded;
 
-#[macro_use]
-extern crate log;
 extern crate pretty_env_logger;
 
 type BoxedResponse = Box<Future<Item=Response<Body>,Error=hyper::Error> + Send>;
@@ -199,6 +199,27 @@ struct Error{
     error : String
 }
 
+trait JsonResponse{
+    fn json_response<T: Serialize + Sized>(&mut self, status: hyper::StatusCode, body: T);
+}
+
+impl JsonResponse for Response<Body>{
+
+    fn json_response<T: Serialize + Sized>(&mut self, status: hyper::StatusCode, body: T){
+        self.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        match serde_json::to_string(&body){
+            Ok(json) => {
+                *self.status_mut() = status;
+                *self.body_mut() = Body::from(json);
+            },
+            Err(err) =>{
+                *self.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                *self.body_mut() = Body::from(format!("Serialization error: {}",err));
+            }
+        }
+    }
+}
+
 impl QuestionsController{
     fn new(service : QuestionsService)->QuestionsController{
         return QuestionsController{
@@ -207,57 +228,43 @@ impl QuestionsController{
     }
 
     fn categories(&self, _: &Request<Body>, response: &mut Response<Body>)->(){
-        *response.body_mut() = Body::from(self.service.categories().unwrap().join(",").to_string());        
+        let categories = match self.service.categories(){
+            Ok(categories) => categories,
+            Err(err) => return response.json_response(StatusCode::INTERNAL_SERVER_ERROR,Error{error: format!("{}",err)})
+        };
+        return response.json_response(StatusCode::OK, categories);       
     }
 
     fn questions(&self, request: &Request<Body>, response: &mut Response<Body>)->(){
-        
-        response.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        
+                
         let params_result = request
         .uri()
         .query()
         .map(|q| q.as_bytes())
         .map(|query| {
             form_urlencoded::parse(query).into_owned().collect::<HashMap<String, String>>()
-        })
-        .ok_or(Error{error: "Required Parameter 'category' not present in query.".to_owned()});
+        });
 
+        let check_category = |params : &HashMap<String,String>|{
+            params.get("category").map(|cat| cat.len() ).unwrap_or(0) > 0
+        };
 
         let params = match params_result {
-            Ok(params) => params,
-            Err(err) => {
-                let json = serde_json::to_string(&err).unwrap();
-                *response.body_mut() = Body::from(json);  
-                return;
-            }
+            Some(ref params) if check_category(params) => params,
+            _ => return response.json_response(StatusCode::BAD_REQUEST,Error{error: "Required Parameter 'category' not present in query.".to_owned()})
         };
 
-        let category = match params.get("category"){
-            Some(category) => category,
-            _ => {
-                let json = serde_json::to_string(&Error{error: "Required Parameter 'category' not present in query.".to_owned()}).unwrap();
-                *response.body_mut() = Body::from(json);  
-                return;
-            }
-        };
-
+        let category = params.get("category").unwrap();
         let page = params.get("page").and_then(|p| p.parse::<u64>().ok().or(None)).unwrap_or(1);
         let size = params.get("size").and_then(|s| s.parse::<u64>().ok().or(None)).unwrap_or(10);
 
         let (questions,count) = match self.service.questions(category,page,size){
             Ok(output) => output,
-            Err(err) => {
-                let json = serde_json::to_string(&Error{error: format!("{}",err)}).unwrap();
-                *response.body_mut() = Body::from(json);  
-                return;
-            } 
+            Err(err) => return response.json_response(StatusCode::INTERNAL_SERVER_ERROR,Error{error: format!("{}",err)})
         };
 
         let paginated_body = PaginatedResponse::new(questions,page,count,size);
-
-        let json = serde_json::to_string(&paginated_body).unwrap();
-        *response.body_mut() = Body::from(json);        
+        return response.json_response(StatusCode::OK, paginated_body);    
     }
 }
 

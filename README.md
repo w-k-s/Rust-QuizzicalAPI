@@ -6,7 +6,9 @@
 - [x] parse page size and offset from request
 - [x] return paginated response
 - [x] send content type
-- [ ] handle errors + status code
+- [x] handle errors + status code
 - [ ] cache responses
 - [ ] organise into modules
-
+- [ ] env variables
+- [ ] docker
+- [ ] AWS
