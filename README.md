@@ -8,6 +8,6 @@
 - [x] send content type
 - [x] handle errors + status code
 - [x] organise into modules
-- [ ] env variables
+- [x] env variables
 - [ ] docker
 - [ ] AWS

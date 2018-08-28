@@ -23,6 +23,7 @@ extern crate serde_json;
 extern crate url;
 
 use std::sync::Arc;
+use std::env;
 
 use hyper::{Body, Request, Response, Server};
 use hyper::rt::Future;
@@ -67,7 +68,23 @@ fn app(req: Request<Body>, registry: Arc<ControllerRegistry>) -> BoxedResponse {
 fn main() {
     pretty_env_logger::init();
 
-    let client = Client::connect("localhost", 27017)
+    for argument in env::args() {
+        println!("{}", argument);
+    }
+
+    let db_host = env::var_os("DB_HOST")
+                    .map(|host| host.into_string().expect("invalid DB_HOST"))
+                    .unwrap_or("localhost".to_owned());
+    let db_port = env::var_os("DB_PORT")
+                    .map(|port| port.into_string().expect("invalid DB_PORT"))
+                    .map(|port| port.parse::<u16>().expect("invalid DB_PORT"))
+                    .unwrap_or(27017);
+    let port = env::var_os("PORT")
+                    .map(|port| port.into_string().expect("invalid PORT"))
+                    .map(|port| port.parse::<u16>().expect("invalid PORT"))
+                    .unwrap_or(3001);
+
+    let client = Client::connect(&db_host, db_port)
         .expect("Failed to initialize standalone client.");
 
     let repo = QuestionsRepository::new(client);
@@ -87,7 +104,7 @@ fn main() {
         })
     };
 
-	let addr = ([127, 0, 0, 1], 3001).into();
+	let addr = ([127, 0, 0, 1], port).into();
 	let server = Server::bind(&addr)
 	    .serve(new_service)
 	    .map_err(|e| eprintln!("server error: {}", e));
