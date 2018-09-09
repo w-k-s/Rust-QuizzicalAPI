@@ -14,8 +14,6 @@ use url::form_urlencoded;
 use services::*;
 use responses::*;
 
-extern crate pretty_env_logger;
-
 pub trait Controller : mopa::Any+Sync+Send {}
 mopafy!(Controller);
 

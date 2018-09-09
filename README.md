@@ -9,5 +9,5 @@
 - [x] handle errors + status code
 - [x] organise into modules
 - [x] env variables
-- [ ] docker
+- [x] docker
 - [ ] AWS

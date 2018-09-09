@@ -4,8 +4,8 @@ version = "0.1.0"
 authors = ["Waqqas Sheikh <waqqas.abdulkareem@gmail.com>"]
 
 [dependencies]
-hyper = "0.12"
-futures = "0.1" 
+hyper = "0.12.9"
+futures = "0.1.23" 
 bson = "0.12.2"
 mongodb = "0.3.10"
 mopa = "0.2.2"
@@ -13,5 +13,3 @@ serde = "1.0.75"
 serde_derive = "1.0.75"
 serde_json = "1.0.26"
 url = "1.7.1"
-log = "0.4"
-pretty_env_logger = "0.2.4"

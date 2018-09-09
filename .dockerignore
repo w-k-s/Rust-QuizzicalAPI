@@ -1,0 +1,6 @@
+target
+docker-compose.production.yml
+docker-compose.development.yml
+Makefile
+.env
+README.md

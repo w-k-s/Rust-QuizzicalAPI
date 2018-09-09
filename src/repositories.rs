@@ -14,19 +14,21 @@ use models::*;
 pub type TotalRecordsCount = u64;
 
 pub struct QuestionsRepository{
-    client: Client
+    client: Client,
+    db_name: String
 }
 
 impl QuestionsRepository{
 
-    pub fn new(client : Client) -> QuestionsRepository{
+    pub fn new(client : Client, db_name : &str) -> QuestionsRepository{
         return QuestionsRepository{
-            client: client
+            client: client,
+            db_name: db_name.to_owned()
         }
     }
 
     fn coll(&self, name : &'static str)->Collection{
-        self.client.db("quizzical").collection(name)
+        self.client.db(&self.db_name).collection(name)
     }
 
     pub fn categories(&self) -> Result<Categories,String>{

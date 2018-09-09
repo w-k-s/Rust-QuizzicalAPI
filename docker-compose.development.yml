@@ -1,0 +1,27 @@
+version: "3.1"
+
+services:
+  quizzical:
+    image: "quizzical:${TAG}"
+    container_name: quizzical
+    environment:
+      LISTEN_ADDRESS: "0.0.0.0:3000"
+      DB_HOST: "datastore"
+      DB_PORT: "27017"
+      RUST_BACKTRACE: "1"
+    ports: 
+      - 3000:3000
+    links:
+      - datastore
+    depends_on:
+      - datastore
+    expose:
+      - "3000"
+
+  datastore:
+    image: mongo
+    container_name: mongo
+    ports:
+      - 27017:27017
+    volumes:
+      - ~/data:/data/db

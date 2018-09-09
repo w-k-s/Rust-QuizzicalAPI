@@ -31,14 +31,13 @@ use hyper::service::service_fn;
 use hyper::{Method,StatusCode};
 
 use mongodb::{Client, ThreadedClient};
+use mongodb::db::{ThreadedDatabase};
 use futures::future;
 
 use repositories::*;
 use services::*;
 use controllers::*;
 use registry::*;
-
-extern crate pretty_env_logger;
 
 type BoxedResponse = Box<Future<Item=Response<Body>,Error=hyper::Error> + Send>;
 
@@ -47,7 +46,7 @@ fn app(req: Request<Body>, registry: Arc<ControllerRegistry>) -> BoxedResponse {
 
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/") => {
-            *response.body_mut() = Body::from("Try POSTing data to /echo");
+            *response.body_mut() = Body::from("Try GETing data from /api/v3/categories");
         },
         (&Method::GET, "/api/v3/categories") =>{
             let controller : &QuestionsController = registry.get("Questions").unwrap();
@@ -66,11 +65,6 @@ fn app(req: Request<Body>, registry: Arc<ControllerRegistry>) -> BoxedResponse {
 }
 
 fn main() {
-    pretty_env_logger::init();
-
-    for argument in env::args() {
-        println!("{}", argument);
-    }
 
     let db_host = env::var_os("DB_HOST")
                     .map(|host| host.into_string().expect("invalid DB_HOST"))
@@ -79,15 +73,33 @@ fn main() {
                     .map(|port| port.into_string().expect("invalid DB_PORT"))
                     .map(|port| port.parse::<u16>().expect("invalid DB_PORT"))
                     .unwrap_or(27017);
-    let port = env::var_os("PORT")
-                    .map(|port| port.into_string().expect("invalid PORT"))
-                    .map(|port| port.parse::<u16>().expect("invalid PORT"))
-                    .unwrap_or(3001);
+    let db_name = env::var_os("DB_NAME")
+                    .map(|host| host.into_string().expect("invalid DB_NAME"))
+                    .unwrap_or("quizzical".to_owned());
+    let db_user = env::var_os("DB_USER")
+                    .map(|host| host.into_string().expect("invalid DB_USER"));
+    let db_pass = env::var_os("DB_PASS")
+                    .map(|host| host.into_string().expect("invalid DB_NAME"));
+    let listen_addr = env::var_os("LISTEN_ADDRESS")
+                    .map(|addr| addr.into_string().expect("invalid LISTEN_ADDRESS"))
+                    .unwrap_or("127.0.0.1:3000".to_owned());
 
-    let client = Client::connect(&db_host, db_port)
+    println!("DB_HOST: {}", db_host);
+    println!("DB_NAME: {}", db_name);
+    println!("DB_PORT: {}", db_port);
+    println!("DB_USER: {:?}", db_user);
+    println!("DB_PASS: {:?}", db_pass);
+    println!("LISTEN_ADDRESS: {}", listen_addr);
+
+    let client = Client::connect(&db_host,db_port)
         .expect("Failed to initialize standalone client.");
 
-    let repo = QuestionsRepository::new(client);
+    if let (Some(username),Some(password)) = (db_user,db_pass) {
+        let db = client.db(&db_name);
+        let _ = db.auth(&username, &password);
+    }
+
+    let repo = QuestionsRepository::new(client, &db_name);
     let service = QuestionsService::new(repo); 
     let controller = QuestionsController::new(service);
     let mut registry = ControllerRegistry::new();
@@ -104,7 +116,7 @@ fn main() {
         })
     };
 
-	let addr = ([127, 0, 0, 1], port).into();
+	let addr = listen_addr.parse().unwrap();
 	let server = Server::bind(&addr)
 	    .serve(new_service)
 	    .map_err(|e| eprintln!("server error: {}", e));
