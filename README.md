@@ -1,13 +1,16 @@
 # Rust-QuizzicalAPI
 
-- [x] return categories as string
-- [x] return questions as string
-- [x] returns responses as json
-- [x] parse page size and offset from request
-- [x] return paginated response
-- [x] send content type
-- [x] handle errors + status code
-- [x] organise into modules
-- [x] env variables
-- [x] docker
-- [x] AWS
+## Introduction
+
+This repository contains the source code of the Quizzical REST API v3.
+The API is used by the Quizzical Android application.
+
+This project has now been **deprecated**, in favour of the [Quizzical Serverless API](https://github.com/w-k-s/aws-lambda-quizzical).
+
+## Tech Stack
+
+- Rust
+- Hyper
+- Docker
+- EC2
+- MongoDB
