@@ -10,4 +10,4 @@
 - [x] organise into modules
 - [x] env variables
 - [x] docker
-- [ ] AWS
+- [x] AWS

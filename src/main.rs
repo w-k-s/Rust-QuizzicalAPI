@@ -7,6 +7,7 @@ mod registry;
 
 extern crate hyper;
 extern crate futures;
+extern crate tokio_io_pool;
 
 #[macro_use]
 extern crate mopa;//makes downcasting from T -> Object easier.
@@ -21,6 +22,8 @@ extern crate serde;
 extern crate serde_json;
 
 extern crate url;
+extern crate log;
+extern crate simple_logger;
 
 use std::sync::Arc;
 use std::env;
@@ -33,6 +36,7 @@ use hyper::{Method,StatusCode};
 use mongodb::{Client, ThreadedClient};
 use mongodb::db::{ThreadedDatabase};
 use futures::future;
+use log::{info,error};
 
 use repositories::*;
 use services::*;
@@ -50,6 +54,7 @@ fn app(req: Request<Body>, registry: Arc<ControllerRegistry>) -> BoxedResponse {
         },
         (&Method::GET, "/api/v3/categories") =>{
             let controller : &QuestionsController = registry.get("Questions").unwrap();
+            info!("Handling with controller: {:p}",controller);
             controller.categories(&req,&mut response)
         },
         (&Method::GET, "/api/v3/questions") =>{
@@ -65,7 +70,7 @@ fn app(req: Request<Body>, registry: Arc<ControllerRegistry>) -> BoxedResponse {
 }
 
 fn main() {
-
+    simple_logger::init_with_level(log::Level::Debug).unwrap();
     let db_host = env::var_os("DB_HOST")
                     .map(|host| host.into_string().expect("invalid DB_HOST"))
                     .unwrap_or("localhost".to_owned());
@@ -93,13 +98,12 @@ fn main() {
 
     let client = Client::connect(&db_host,db_port)
         .expect("Failed to initialize standalone client.");
-
     if let (Some(username),Some(password)) = (db_user,db_pass) {
         let db = client.db(&db_name);
         let _ = db.auth(&username, &password);
     }
 
-    let repo = QuestionsRepository::new(client, &db_name);
+    let repo = QuestionsRepository::new(client, &db_name);    
     let service = QuestionsService::new(repo); 
     let controller = QuestionsController::new(service);
     let mut registry = ControllerRegistry::new();
@@ -112,6 +116,7 @@ fn main() {
         let registry_ref = registry_ref.clone();
         service_fn(move |request|{
             //each connection gets a new service. share arc reference to registry with service.
+            info!("{} {}",request.method().clone(),request.uri().clone());
             app(request, registry_ref.clone())
         })
     };
@@ -121,5 +126,5 @@ fn main() {
 	    .serve(new_service)
 	    .map_err(|e| eprintln!("server error: {}", e));
 
-	hyper::rt::run(server);
+	tokio_io_pool::run(server);
 }
