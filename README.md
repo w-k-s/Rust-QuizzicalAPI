@@ -1,4 +1,4 @@
-# Rust-QuizzicalAPI
+# Quizzical API v3
 
 ## Introduction
 
