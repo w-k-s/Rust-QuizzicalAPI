@@ -4,64 +4,68 @@ extern crate mongodb;
 extern crate serde;
 extern crate serde_json;
 
-use mongodb::{Client, ThreadedClient};
-use mongodb::db::{ThreadedDatabase};
-use mongodb::coll::Collection;
 use mongodb::coll::options::FindOptions;
+use mongodb::coll::Collection;
+use mongodb::db::ThreadedDatabase;
+use mongodb::{Client, ThreadedClient};
 
 use models::*;
 
 pub type TotalRecordsCount = u64;
 
-pub struct QuestionsRepository{
+pub struct QuestionsRepository {
     client: Client,
-    db_name: String
+    db_name: String,
 }
 
-impl QuestionsRepository{
-
-    pub fn new(client : Client, db_name : &str) -> QuestionsRepository{
-        return QuestionsRepository{
+impl QuestionsRepository {
+    pub fn new(client: Client, db_name: &str) -> QuestionsRepository {
+        return QuestionsRepository {
             client: client,
-            db_name: db_name.to_owned()
-        }
+            db_name: db_name.to_owned(),
+        };
     }
 
-    fn coll(&self, name : &'static str)->Collection{
+    fn coll(&self, name: &'static str) -> Collection {
         self.client.db(&self.db_name).collection(name)
     }
 
-    pub fn categories(&self) -> Result<Categories,String>{
+    pub fn categories(&self) -> Result<Categories, String> {
         return self
             .coll("questions")
-            .distinct("category",None,None)
-            .map(|bsons| 
+            .distinct("category", None, None)
+            .map(|bsons| {
                 bsons
-                .iter()
-                .map(|bson| 
-                    bson
-                    .as_str()
-                    .expect("Unexpected non-string category")
-                    .to_owned() 
-                )
-                .map(|title| Category{title:title})
-                .collect()
-            )
-            .map(|categories| Categories{categories: categories})
-            .map_err(|err| format!("{}",err))
+                    .iter()
+                    .map(|bson| {
+                        bson.as_str()
+                            .expect("Unexpected non-string category")
+                            .to_owned()
+                    })
+                    .map(|title| Category { title: title })
+                    .collect()
+            })
+            .map(|categories| Categories {
+                categories: categories,
+            })
+            .map_err(|err| format!("{}", err));
     }
 
-    pub fn questions(&self,category: &str, page: u64, size: u64)->Result<(Vec<Question>,TotalRecordsCount),String>{
-        
-        let filter = doc!{"category":category.clone()};
-        
+    pub fn questions(
+        &self,
+        category: &str,
+        page: u64,
+        size: u64,
+    ) -> Result<(Vec<Question>, TotalRecordsCount), String> {
+        let filter = doc! {"category":category.clone()};
+
         let count = self
             .coll("questions")
-            .count(Some(filter.clone()),None)
+            .count(Some(filter.clone()), None)
             .unwrap_or(0) as u64;
 
-        if count == 0{
-            return Ok((vec![],0));
+        if count == 0 {
+            return Ok((vec![], 0));
         }
 
         let mut find_options = FindOptions::new();
@@ -70,15 +74,14 @@ impl QuestionsRepository{
 
         return self
             .coll("questions")
-            .find(Some(filter),Some(find_options))
+            .find(Some(filter), Some(find_options))
             .map(|c| {
-                let questions = c.map(|d|{
-                        bson::from_bson(bson::Bson::Document(d.unwrap()))
-                        .unwrap()
-                }).collect();
+                let questions = c
+                    .map(|d| bson::from_bson(bson::Bson::Document(d.unwrap())).unwrap())
+                    .collect();
 
-                (questions,count)
+                (questions, count)
             })
-            .map_err(|err| format!("{}",err))
+            .map_err(|err| format!("{}", err));
     }
 }
