@@ -3,6 +3,9 @@
 include .env
 export $(shell sed 's/=.*//' .env)
 
+run:
+	DB_CONN_STRING="postgres://postgres:7713659@127.0.0.1:5432/postgres" cargo run
+
 docker-build:
 	docker build -t $(IMAGE_NAME):$(TAG) .
 

@@ -1,28 +1,56 @@
-extern crate bson;
 extern crate serde;
+extern crate serde_derive;
 extern crate serde_json;
 
-#[derive(Serialize, Deserialize, Debug)]
+use serde_derive::{Deserialize, Serialize};
+use std::fmt;
+
+#[derive(Debug)]
+pub enum ValidationError {
+    Constraint { pointer: String, message: String },
+}
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let ValidationError::Constraint { pointer, message } = self;
+        write!(f, "ValidationError{{ {}: {} }}", pointer, message,)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, GraphQLObject)]
 pub struct Category {
     pub title: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Categories {
-    pub categories: Vec<Category>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, GraphQLObject)]
 pub struct Choice {
+    pub id: Option<i32>,
     pub title: String,
     pub correct: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, GraphQLObject)]
 pub struct Question {
-    #[serde(rename = "_id")]
-    pub id: bson::oid::ObjectId, //not ideal
+    pub id: Option<i32>,
     pub question: String,
     pub category: String,
     pub choices: Vec<Choice>,
+}
+
+impl Question {
+    pub fn validate(question: &Question) -> Result<(), ValidationError> {
+        if question
+            .choices
+            .iter()
+            .filter(|choice| choice.correct)
+            .count()
+            > 1
+        {
+            return Err(ValidationError::Constraint {
+                pointer: "/data/attribute/choices".to_string(),
+                message: "Only one correct choice allowed".to_string(),
+            });
+        }
+        Ok(())
+    }
 }
