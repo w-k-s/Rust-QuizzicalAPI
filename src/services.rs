@@ -16,6 +16,21 @@ impl CategoriesService {
     pub fn categories(&self) -> Result<Vec<Category>, RepositoryError> {
         return (*self.repo).list_categories();
     }
+
+    pub fn save_category(
+        &self,
+        category: &Category,
+    ) -> Result<SaveCategoryStatus, RepositoryError> {
+        return (*self.repo).save_category(category);
+    }
+
+    pub fn save_category_and_set_active(
+        &self,
+        category: &str,
+        active: Option<bool>,
+    ) -> Result<SaveCategoryStatus, RepositoryError> {
+        return (*self.repo).save_category_and_set_active(category, active);
+    }
 }
 
 pub struct QuestionsService {
@@ -36,6 +51,10 @@ impl QuestionsService {
         size: i64,
     ) -> Result<Vec<Question>, RepositoryError> {
         return (*self.repo).get_questions(category, page, size);
+    }
+
+    pub fn save_question(&self, question: &Question) -> Result<Question, RepositoryError> {
+        return (*self.repo).save_question(question);
     }
 
     pub fn count_questions(&self, category: &str) -> Result<i64, RepositoryError> {

@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 use hyper::rt::Future;
 use hyper::service::service_fn;
-use hyper::{Body, Request, Response, Server};
+use hyper::{Body, Response, Server};
 use hyper::{Method, StatusCode};
 use juniper::RootNode;
 
@@ -43,10 +43,9 @@ use controllers::*;
 use repositories::*;
 use services::*;
 
-type BoxedResponse = Box<Future<Item = Response<Body>, Error = hyper::Error> + Send>;
-
 fn main() {
     simple_logger::init_with_level(log::Level::Debug).unwrap();
+
     let conn_string = env::var("DB_CONN_STRING").expect("invalid DB_CONN_STRING");
     let listen_addr = env::var_os("LISTEN_ADDRESS")
         .map(|addr| addr.into_string().expect("invalid LISTEN_ADDRESS"))

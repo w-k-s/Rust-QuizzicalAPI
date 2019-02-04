@@ -1,12 +1,12 @@
 extern crate futures;
 extern crate hyper;
-extern crate mopa; //makes downcasting from T -> Object easier.
 extern crate serde;
 extern crate serde_json;
 extern crate url;
 
 use juniper::FieldResult;
 use models::*;
+use repositories::*;
 use services::*;
 
 pub struct Context {
@@ -14,7 +14,6 @@ pub struct Context {
     pub questions_service: QuestionsService,
 }
 
-// To make our context usable by Juniper, we have to implement a marker trait.
 impl juniper::Context for Context {}
 
 pub struct Query;
@@ -44,4 +43,37 @@ graphql_object!(Query: Context |&self| {
 
 pub struct Mutation;
 
-graphql_object!(Mutation: Context | &self | {});
+graphql_object!(Mutation: Context |&self| {
+    field create_category(&executor, name: String) -> FieldResult<Category> {
+        
+        let category = Category{
+            title: name,
+        };
+        
+        let context = executor.context();
+        context.categories_service.save_category(&category)?;
+
+        Ok(category)
+    }
+
+    field activate_category(&executor, name: String, active: bool) -> FieldResult<SaveCategoryStatus> {
+        let context = executor.context();
+        let status = context.categories_service.save_category_and_set_active(&name, Some(active))?;
+        Ok(status)
+    }
+
+    field create_question(&executor, new_question: NewQuestion) -> FieldResult<Question>{
+        let context = executor.context();
+        let question = context.questions_service.save_question(&Question{
+            id: None,
+            question: new_question.question,
+            category: new_question.category,
+            choices: new_question.choices.iter().map(|choice| Choice{
+                id: None,
+                title: choice.title.clone(),
+                correct: choice.correct,
+            }).collect(),
+        })?;
+        Ok(question)
+    }
+});

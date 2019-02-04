@@ -8,7 +8,7 @@ use r2d2_postgres::PostgresConnectionManager;
 use std::collections::HashMap;
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, GraphQLEnum)]
 pub enum SaveCategoryStatus {
     Created,
     Exists,
@@ -35,11 +35,16 @@ impl Connection {
             .and_then(|c| c.query(query, params).map_err(|e| e.into()));
     }
 
-    /*fn transaction(&self)->Result<Transaction, RepositoryError>{
-        return self.pool.get()
-        .map_err(|e| e.into() )
-        .and_then(|c| c.transaction().map_err(|e| e.into() ));
-    }*/
+    fn transaction<T, F>(&self, do_transaction: F) -> Result<T, RepositoryError>
+    where
+        F: FnOnce(Transaction) -> Result<T, RepositoryError>,
+    {
+        return self.pool.get().map_err(|e| e.into()).and_then(|c| {
+            c.transaction()
+                .map_err(|e| e.into())
+                .and_then(|t| do_transaction(t))
+        });
+    }
 }
 
 #[derive(Debug)]
@@ -111,12 +116,12 @@ impl CategoriesRepository {
         &self,
         category: &Category,
     ) -> Result<SaveCategoryStatus, RepositoryError> {
-        self.save_category_and_set_active(category, None)
+        self.save_category_and_set_active(&category.title, None)
     }
 
     pub fn save_category_and_set_active(
         &self,
-        category: &Category,
+        category: &str,
         active: Option<bool>,
     ) -> Result<SaveCategoryStatus, RepositoryError> {
         info!("save_category(category: '{:?}').", category);
@@ -126,13 +131,13 @@ impl CategoriesRepository {
                 "(name,active)",
                 "($1,$2)",
                 "ON CONFLICT(name) DO UPDATE SET active=$2",
-                vec![&category.title as &ToSql, &active as &ToSql],
+                vec![&category as &ToSql, &active as &ToSql],
             ),
             None => (
                 "(name)",
                 "($1)",
                 "ON CONFLICT DO NOTHING",
-                vec![&category.title as &ToSql],
+                vec![&category as &ToSql],
             ),
         };
 
@@ -189,126 +194,126 @@ impl QuestionsRepository {
         };
     }
 
-    /*pub fn save_question(&self, question: &Question) -> Result<Question, RepositoryError> {
+    pub fn save_question(&self, question: &Question) -> Result<Question, RepositoryError> {
         info!("save_question(question: '{:?}').", question);
 
-        let trans = self.conn.transaction()?;
+        return self.conn.transaction(|trans| {
+            info!("Inserting question '{:?}' into database.", question);
 
-        info!("Inserting question '{:?}' into database.", question);
+            let id_rows = &trans
+                .query(
+                    "INSERT INTO questions (text, category) VALUES ($1, $2) RETURNING id",
+                    &[&question.question, &question.category],
+                )
+                .or_else(|e| {
+                    error!(
+                        "Insert question failed for question: '{:?}', with reason: '{:?}'.",
+                        question, e
+                    );
+                    //rollback will happen when transaction is dropped (i.e. Destructor)
+                    trans.set_rollback();
+                    Err(e)
+                })?;
 
-        let id_rows = &trans
-            .query(
-                "INSERT INTO questions (text, category) VALUES ($1, $2) RETURNING id",
-                &[&question.question, &question.category],
-            )
-            .or_else(|e| {
+            info!(
+                "Insert question succeeded for question: '{:?}', with updated rows: '{:?}'.",
+                question, id_rows,
+            );
+
+            let question_id: i64 = id_rows
+                .iter()
+                .next()
+                .and_then(|row| row.get(0))
+                .ok_or(RepositoryError::UnknownError(Some(
+                    "Failed to get question id".into(),
+                )))
+                .map_err(|e| {
+                    error!(
+                        "Insert question succeeded but no id received for question: '{:?}'.",
+                        question
+                    );
+                    trans.set_rollback();
+                    e
+                })?;
+
+            //Since we don't know how many choices a question has, we need to build a query string for bulk insert manually.
+
+            //value_placeholders refers to the `($1, $2)` part of the query.
+            let mut value_placeholders: Vec<String> = vec![];
+            //total is the number of fields to be inserted per choice multiplied by the number of choices
+            let num_fields = 3;
+            let total = num_fields * question.choices.len();
+
+            for i in (0..total).step_by(num_fields) {
+                value_placeholders.push(format!("(${}, ${}, ${})", i + 1, i + 2, i + 3))
+            }
+
+            //join all the value placeholders i.e. ($1,$2), ($3,$4)
+            let joined_value_placeholders = value_placeholders.join(",");
+
+            let query_string = &format!(
+                "INSERT INTO choices (question_id, text, correct) VALUES {} RETURNING id",
+                joined_value_placeholders
+            );
+
+            let mut values: Vec<&ToSql> = vec![];
+            for choice in question.choices.iter() {
+                values.push(&question_id);
+                values.push(&choice.title);
+                values.push(&choice.correct);
+            }
+
+            info!(
+                "Will insert choices for question id '{}' using query '{}' and values '{:?}'.",
+                question_id, query_string, values
+            );
+
+            let rows: Rows = trans.query(query_string, values.as_slice()).or_else(|e| {
                 error!(
-                    "Insert question failed for question: '{:?}', with reason: '{:?}'.",
-                    question, e
+                    "Bulk insert choices failed for question_id: '{}', reason: {}.",
+                    question_id, e
                 );
                 //rollback will happen when transaction is dropped (i.e. Destructor)
                 trans.set_rollback();
                 Err(e)
-            })?;
+            })?;;
 
-        info!(
-            "Insert question succeeded for question: '{:?}', with updated rows: '{:?}'.",
-            question, id_rows,
-        );
+            // Create a new vector of choices, with the id field set.
+            let ids: Vec<i64> = rows.iter().map(|row| row.get(0)).collect();
+            let choices_with_ids = question
+                .choices
+                .iter()
+                .zip(ids.iter())
+                .map(|choice_id_tuple| {
+                    let choice = choice_id_tuple.0;
+                    let id = choice_id_tuple.1;
+                    Choice {
+                        id: Some(*id as i32),
+                        title: choice.title.clone(),
+                        correct: choice.correct,
+                    }
+                })
+                .collect();
 
-        let question_id: i64 = id_rows
-            .iter()
-            .next()
-            .and_then(|row| row.get(0))
-            .ok_or(RepositoryError::UnknownError(Some(
-                "Failed to get question id".into(),
-            )))
-            .map_err(|e| {
-                error!(
-                    "Insert question succeeded but no id received for question: '{:?}'.",
-                    question
-                );
-                trans.set_rollback();
-                e
-            })?;
+            trans.set_commit();
 
-        //Since we don't know how many choices a question has, we need to build a query string for bulk insert manually.
-
-        //value_placeholders refers to the `($1, $2)` part of the query.
-        let mut value_placeholders: Vec<String> = vec![];
-        //total is the number of fields to be inserted per choice multiplied by the number of choices
-        let num_fields = 3;
-        let total = num_fields * question.choices.len();
-
-        for i in (0..total).step_by(num_fields) {
-            value_placeholders.push(format!("(${}, ${}, ${})", i + 1, i + 2, i + 3))
-        }
-
-        //join all the value placeholders i.e. ($1,$2), ($3,$4)
-        let joined_value_placeholders = value_placeholders.join(",");
-
-        let query_string = &format!(
-            "INSERT INTO choices (question_id, text, correct) VALUES {} RETURNING id",
-            joined_value_placeholders
-        );
-
-        let mut values: Vec<&ToSql> = vec![];
-        for choice in question.choices.iter() {
-            values.push(&question_id);
-            values.push(&choice.title);
-            values.push(&choice.correct);
-        }
-
-        info!(
-            "Will insert choices for question id '{}' using query '{}' and values '{:?}'.",
-            question_id, query_string, values
-        );
-
-        let rows: Rows = trans.query(query_string, values.as_slice()).or_else(|e| {
-            error!(
-                "Bulk insert choices failed for question_id: '{}', reason: {}.",
-                question_id, e
-            );
-            //rollback will happen when transaction is dropped (i.e. Destructor)
-            trans.set_rollback();
-            Err(e)
-        })?;;
-
-        // Create a new vector of choices, with the id field set.
-        let ids: Vec<i64> = rows.iter().map(|row| row.get(0)).collect();
-        let choices_with_ids = question
-            .choices
-            .iter()
-            .zip(ids.iter())
-            .map(|choice_id_tuple| {
-                let choice = choice_id_tuple.0;
-                let id = choice_id_tuple.1;
-                Choice {
-                    id: Some(*id),
-                    title: choice.title.clone(),
-                    correct: choice.correct,
-                }
-            })
-            .collect();
-
-        trans.set_commit();
-
-        trans
-            .finish()
-            .map_err(|e| {
-                error!(
-                    "Finishing insert question failed for question_id '{}' with reason '{}'.",
-                    question_id, e
-                );
-                e.into()
-            })
-            .and(Ok(Question {
-                id: Some(question_id),
-                question: question.question.clone(),
-                category: question.category.clone(),
-                choices: choices_with_ids,
-            }))
-    }*/
+            trans
+                .finish()
+                .map_err(|e| {
+                    error!(
+                        "Finishing insert question failed for question_id '{}' with reason '{}'.",
+                        question_id, e
+                    );
+                    e.into()
+                })
+                .and(Ok(Question {
+                    id: Some(question_id as i32),
+                    question: question.question.clone(),
+                    category: question.category.clone(),
+                    choices: choices_with_ids,
+                }))
+        });
+    }
 
     pub fn count_questions(&self, category: &str) -> Result<i64, RepositoryError> {
         let count_rows = &self

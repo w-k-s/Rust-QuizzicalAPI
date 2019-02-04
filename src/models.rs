@@ -37,6 +37,19 @@ pub struct Question {
     pub choices: Vec<Choice>,
 }
 
+#[derive(GraphQLInputObject)]
+pub struct NewQuestion {
+    pub question: String,
+    pub category: String,
+    pub choices: Vec<NewChoice>,
+}
+
+#[derive(GraphQLInputObject)]
+pub struct NewChoice {
+    pub title: String,
+    pub correct: bool,
+}
+
 impl Question {
     pub fn validate(question: &Question) -> Result<(), ValidationError> {
         if question
