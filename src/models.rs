@@ -1,19 +1,14 @@
-extern crate serde;
-extern crate serde_derive;
-extern crate serde_json;
-
 use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 
 #[derive(Debug)]
-pub enum ValidationError {
-    Constraint { pointer: String, message: String },
+pub struct ValidationError {
+    message: String,
 }
 
 impl std::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let ValidationError::Constraint { pointer, message } = self;
-        write!(f, "ValidationError{{ {}: {} }}", pointer, message,)
+        write!(f, "{}", self.message)
     }
 }
 
@@ -59,8 +54,7 @@ impl Question {
             .count()
             > 1
         {
-            return Err(ValidationError::Constraint {
-                pointer: "/data/attribute/choices".to_string(),
+            return Err(ValidationError {
                 message: "Only one correct choice allowed".to_string(),
             });
         }

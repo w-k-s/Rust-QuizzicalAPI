@@ -13,4 +13,9 @@ This project has now been **deprecated**, in favour of the [Quizzical Serverless
 - Hyper
 - Docker
 - EC2
-- MongoDB
+- PostgreSQL
+- GraphQL ([Juniper](https://github.com/graphql-rust/juniper))
+
+## Useful Resources
+
+[Understanding HTTP Digest Access Authentication](https://www.sitepoint.com/understanding-http-digest-access-authentication/)

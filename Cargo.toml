@@ -20,3 +20,5 @@ tokio-io-pool = "0.1.5"
 juniper = "0.10.0"
 juniper_hyper = "0.1.0"
 juniper_codegen = "0.10.0"
+md-5 = "0.8.0"
+uuid = { version = "0.7", features = ["v4"] }

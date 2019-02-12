@@ -12,12 +12,14 @@ extern crate juniper;
 #[macro_use]
 extern crate juniper_codegen;
 
+extern crate md5;
 extern crate postgres;
 extern crate r2d2;
 extern crate r2d2_postgres;
 extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
+extern crate uuid;
 
 extern crate log;
 extern crate simple_logger;
@@ -26,6 +28,7 @@ extern crate url;
 use std::env;
 use std::sync::Arc;
 
+use hyper::header::HeaderMap;
 use hyper::rt::Future;
 use hyper::service::service_fn;
 use hyper::{Body, Response, Server};
@@ -46,7 +49,9 @@ use services::*;
 fn main() {
     simple_logger::init_with_level(log::Level::Debug).unwrap();
 
-    let conn_string = env::var("DB_CONN_STRING").expect("invalid DB_CONN_STRING");
+    let admin_username = env::var("ADMIN_USERNAME").expect("ADMIN_USERNAME required");
+    let admin_password = env::var("ADMIN_PASSWORD").expect("ADMIN_PASSWORD required");
+    let conn_string = env::var("DB_CONN_STRING").expect("DB_CONN_STRING required");
     let listen_addr = env::var_os("LISTEN_ADDRESS")
         .map(|addr| addr.into_string().expect("invalid LISTEN_ADDRESS"))
         .unwrap_or("127.0.0.1:3000".to_owned());
@@ -62,10 +67,12 @@ fn main() {
 
     let categories_service = CategoriesService::new(categories_repository);
     let questions_service = QuestionsService::new(questions_repository);
+    let authorization_service = AuthorizationService::new(&admin_username, &admin_password);
 
     let context = Arc::new(Context {
         categories_service: categories_service,
         questions_service: questions_service,
+        authorization_service: authorization_service,
     });
 
     let cpu_pool = CpuPool::new(4);
@@ -81,6 +88,16 @@ fn main() {
             let ctx = ctx.clone();
             match (req.method(), req.uri().path()) {
                 (&Method::GET, "/") => Box::new(juniper_hyper::graphiql("/graphql")),
+                (&Method::GET, "/authenticate") => {
+                    let mut response = Response::new(Body::empty());
+                    let mut headers = HeaderMap::new();
+
+                    let www_authenticate = ctx.authorization_service.www_authenticate();
+                    headers.insert("WWW-Authenticate", www_authenticate.parse().unwrap());
+
+                    *response.headers_mut() = headers;
+                    Box::new(future::ok(response))
+                }
                 (&Method::GET, "/graphql") => {
                     Box::new(juniper_hyper::graphql(cpu_pool, root_node, ctx, req))
                 }
